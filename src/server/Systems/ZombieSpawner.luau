@@ -228,8 +228,22 @@ end
 -- Spawn
 -------------------------------------------------
 
+--- Multiplicateurs de niveau (définis par le GameLoop à chaque niveau)
+ZombieSpawner.HPMultiplier     = 1.0 :: number
+ZombieSpawner.SpeedMultiplier  = 1.0 :: number
+ZombieSpawner.DamageMultiplier = 1.0 :: number
+
+--- Applique les multiplicateurs du niveau courant
+function ZombieSpawner.SetMultipliers(hp: number, speed: number, damage: number): ()
+	ZombieSpawner.HPMultiplier = hp
+	ZombieSpawner.SpeedMultiplier = speed
+	ZombieSpawner.DamageMultiplier = damage
+	print(`[ZombieSpawner] 📊 Multiplicateurs — HP:{hp}x  Speed:{speed}x  Dmg:{damage}x`)
+end
+
 --- Spawn un zombie sur une ligne donnée, en col 9
-function ZombieSpawner.SpawnZombie(unitId: string, row: number?): ZombieInstance?
+--- hpOverride permet un HP custom (ex : boss)
+function ZombieSpawner.SpawnZombie(unitId: string, row: number?, hpOverride: number?): ZombieInstance?
 	local spawnRow: number = row or rng:NextInteger(1, ROWS)
 	local unitData = UnitDatabase[unitId]
 	if unitData == nil or unitData.Type ~= "Zombie" then
@@ -258,13 +272,18 @@ function ZombieSpawner.SpawnZombie(unitId: string, row: number?): ZombieInstance
 		visualOffset = model.CFrame:Inverse() * visualModel:GetPivot()
 	end
 
+	-- Appliquer les multiplicateurs du niveau
+	local finalHP: number = hpOverride or math.ceil(unitData.HP * ZombieSpawner.HPMultiplier)
+	local finalSpeed: number = (unitData.MoveSpeed or Constants.ZOMBIE_SPEED) * ZombieSpawner.SpeedMultiplier
+	local finalDamage: number = math.ceil(unitData.Damage * ZombieSpawner.DamageMultiplier)
+
 	local zombie: ZombieInstance = {
 		Id = id,
 		UnitId = unitId,
-		HP = unitData.HP,
-		MaxHP = unitData.HP,
-		Damage = unitData.Damage,
-		MoveSpeed = unitData.MoveSpeed or Constants.ZOMBIE_SPEED,
+		HP = finalHP,
+		MaxHP = finalHP,
+		Damage = finalDamage,
+		MoveSpeed = finalSpeed,
 		Model = model,
 		Visual = visualModel,
 		VisualOffset = visualOffset,
@@ -278,7 +297,7 @@ function ZombieSpawner.SpawnZombie(unitId: string, row: number?): ZombieInstance
 	-- Démarrer le mouvement fluide
 	ZombieSpawner._startMovement(zombie)
 
-	print(`[ZombieSpawner] 🧟 Spawn : {unitData.Name} (ID:{id}) en row {spawnRow}`)
+	print(`[ZombieSpawner] 🧟 Spawn : {unitData.Name} (ID:{id}) en row {spawnRow} — HP:{finalHP} Spd:{string.format("%.1f", finalSpeed)} Dmg:{finalDamage}`)
 	return zombie
 end
 

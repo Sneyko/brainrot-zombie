@@ -37,7 +37,9 @@ local WALL_COLOR: Color3 = Color3.fromRGB(140, 140, 150)
 local RARITY_COLORS: { [string]: Color3 } = {
 	Common    = Color3.fromRGB(120, 200, 120),
 	Rare      = Color3.fromRGB(80, 150, 255),
+	Epic      = Color3.fromRGB(200, 80, 255),
 	Legendary = Color3.fromRGB(255, 180, 40),
+	Mythic    = Color3.fromRGB(255, 50, 80),
 }
 
 -------------------------------------------------
@@ -232,11 +234,11 @@ local function buildSpawnLocation(): ()
 	spawn.CanQuery = false
 	spawn.Transparency = 1
 	spawn.TopSurface = Enum.SurfaceType.Smooth
-	spawn.Enabled = true
+	spawn.Enabled = false   -- Désactivé : le joueur spawn au lobby (HubSpawn)
 	spawn.Neutral = true
 	spawn.Parent = gameBoard
 
-	print("[MapBuilder] ✅ SpawnLocation sur le mur")
+	print("[MapBuilder] ✅ SpawnLocation sur le mur (désactivée — spawn au lobby)")
 end
 
 -------------------------------------------------

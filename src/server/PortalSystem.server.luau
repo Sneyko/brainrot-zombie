@@ -4,7 +4,7 @@
 	PortalSystem (ServerScript)
 	Gère la détection des joueurs entrant dans les portails du spawn hub.
 	  • Détecte la proximité joueur ↔ portail via Touched
-	  • Portail "GameMap" → téléporte le joueur vers la zone de jeu (sur le mur)
+	  • Portail "GameMap" → ouvre l'écran de sélection de niveau côté client
 	  • Portail "Shop" / "Sell" / "Gacha" → ouvre l'UI côté client
 ]]
 
@@ -29,6 +29,7 @@ end
 -------------------------------------------------
 local eventsFolder: Instance = sharedFolder:WaitForChild("Events")
 local portalEnteredEvent: RemoteEvent = eventsFolder:WaitForChild("PortalEntered") :: RemoteEvent
+local levelSelectEvent: RemoteEvent = eventsFolder:WaitForChild("LevelSelect") :: RemoteEvent
 
 -------------------------------------------------
 -- Destinations des portails
@@ -82,11 +83,10 @@ local function handlePortalTouch(portalId: string, player: Player): ()
 	if isOnCooldown(player) then return end
 
 	if portalId == "GameMap" then
-		-- Téléporter vers la zone de jeu
-		teleportPlayer(player, GAME_SPAWN_POS)
-		-- Notifier le client pour afficher le bouton retour
+		-- Ouvrir l'écran de sélection de niveau côté client
 		portalEnteredEvent:FireClient(player, "GameMap")
-		print(`[PortalSystem] {player.Name} → Zone de jeu`)
+		setCooldown(player)
+		print(`[PortalSystem] {player.Name} → Sélection de niveau`)
 	else
 		-- Envoyer un événement au client pour ouvrir l'UI correspondante
 		portalEnteredEvent:FireClient(player, portalId)
@@ -140,12 +140,27 @@ end
 -- Bouton retour au Hub (quand le joueur est en jeu)
 -- Le client peut fire PortalEntered avec "ReturnToHub"
 -------------------------------------------------
+local stateChangedEvent: RemoteEvent = eventsFolder:WaitForChild("StateChanged") :: RemoteEvent
+
 portalEnteredEvent.OnServerEvent:Connect(function(player: Player, action: string)
 	if action == "ReturnToHub" then
 		if isOnCooldown(player) then return end
 		teleportPlayer(player, HUB_SPAWN_POS)
+		-- Notifier tous les clients que le jeu est terminé (cache le LevelHUD)
+		stateChangedEvent:FireAllClients("ReturnToMenu", {})
 		print(`[PortalSystem] {player.Name} → Retour au Hub`)
 	end
+end)
+
+-- Quand le joueur choisit un niveau côté client, on le téléporte vers la zone de jeu
+-- Pas de cooldown ici : la sélection vient juste après le portail (qui set déjà un cooldown)
+levelSelectEvent.OnServerEvent:Connect(function(player: Player, levelNumber: unknown)
+	local lv: number = if typeof(levelNumber) == "number" then levelNumber else 0
+	if lv < 1 then return end
+
+	-- Téléporter vers la zone de jeu
+	teleportPlayer(player, GAME_SPAWN_POS)
+	print(`[PortalSystem] {player.Name} → Zone de jeu (Niveau {lv})`)
 end)
 
 -- Nettoyage cooldowns

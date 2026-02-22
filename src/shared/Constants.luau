@@ -37,7 +37,7 @@ Constants.TILE_SPACING = 0
 -------------------------------------------------
 Constants.TILE_THICKNESS = 0.5    -- Épaisseur des plaques d'achat
 Constants.PLATE_SIZE     = 12     -- Taille d'une plaque (studs)
-Constants.PLANT_UNITS    = { "Glorbo", "Kapuchino", "Bombardino", "Tralalero" }
+Constants.PLANT_UNITS    = { "Glorbo", "Kapuchino", "Bombardino", "Tralalero", "TungTungSahur", "BrrBrrPatapim", "LiriliLarala", "SigmaSkibidi", "TitanCameraMan" }
 
 -------------------------------------------------
 -- Spawn unités (sur le sol)
@@ -56,9 +56,9 @@ Constants.ZOMBIE_BASE_Z  = -195   -- Z cible (pied du mur)
 -------------------------------------------------
 -- Économie (BrainCoin)
 -------------------------------------------------
-Constants.STARTING_BRAINCOIN = 10
+Constants.STARTING_BRAINCOIN = 8
 Constants.KILL_REWARD        = 2
-Constants.WAVE_BONUS         = 5
+Constants.WAVE_BONUS         = 4
 
 -------------------------------------------------
 -- Vagues (Waves)

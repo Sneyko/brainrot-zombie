@@ -2,8 +2,9 @@
 
 --[[
 	GameLoop (ServerScript)
-	Tower Defense temps réel — WaveManager + économie BrainCoin.
+	Tower Defense temps réel — Système de niveaux + vagues + économie BrainCoin.
 	Placement via plaques Touched sur le mur.
+	Chaque niveau a un nombre limité de vagues et des paramètres de difficulté.
 	Accessible depuis : ServerScriptService.Server.GameLoop
 ]]
 
@@ -19,6 +20,9 @@ local BoardManager = require(script.Parent:WaitForChild("Systems"):WaitForChild(
 local UnitDatabase = require(sharedFolder:WaitForChild("Data"):WaitForChild("UnitDatabase"))
 local ZombieSpawner = require(script.Parent:WaitForChild("Systems"):WaitForChild("ZombieSpawner"))
 local CombatSystem = require(script.Parent:WaitForChild("Systems"):WaitForChild("CombatSystem"))
+local LevelDatabase = require(sharedFolder:WaitForChild("Data"):WaitForChild("LevelDatabase"))
+local PlayerInventory = require(script.Parent:WaitForChild("Systems"):WaitForChild("PlayerInventory"))
+local GachaCatalog = require(sharedFolder:WaitForChild("Data"):WaitForChild("GachaCatalog"))
 
 -- Initialiser le CombatSystem
 CombatSystem.Init(BoardManager, ZombieSpawner)
@@ -26,26 +30,28 @@ CombatSystem.Init(BoardManager, ZombieSpawner)
 -- RemoteEvents
 local eventsFolder: Folder = sharedFolder:WaitForChild("Events") :: Folder
 local budgetUpdateEvent: RemoteEvent = eventsFolder:WaitForChild("BudgetUpdate") :: RemoteEvent
+local stateChangedEvent: RemoteEvent = eventsFolder:WaitForChild("StateChanged") :: RemoteEvent
+local levelSelectEvent: RemoteEvent = eventsFolder:WaitForChild("LevelSelect") :: RemoteEvent
+local gachaInfoEvent: RemoteEvent = eventsFolder:WaitForChild("GachaInfo") :: RemoteEvent
 
 -- Constantes
 local MIN_PLAYERS: number = 1
 local PLATE_DEBOUNCE: number = 2  -- Secondes entre deux achats par joueur
+local TOTAL_LEVELS: number = #LevelDatabase
 
 -- RNG
 local rng: Random = Random.new()
 
--- Types de zombies
-local ZOMBIE_TYPES: { string } = { "BasicSkibidi", "BasicZombie" }
-local ELITE_ZOMBIE: string = "NikeShark"
-local ELITE_WAVE_INTERVAL: number = 3
-
 -------------------------------------------------
 -- État du jeu
 -------------------------------------------------
-local playerBrainCoin: number = Constants.STARTING_BRAINCOIN
+local playerBrainCoin: number = 0
 local baseHP: number = Constants.BASE_HP
+local currentLevel: number = 0
 local currentWave: number = 0
+local totalWavesInLevel: number = 0
 local gameOver: boolean = false
+local gameWon: boolean = false
 
 -- Debounce par joueur+plaque ("UserId_UnitId" → temps du dernier achat)
 local plateDebounce: { [string]: number } = {}
@@ -62,32 +68,49 @@ local function waitForPlayers(): ()
 	print(`[GameLoop] ✅ {#Players:GetPlayers()} joueur(s) connecté(s) — Démarrage !`)
 end
 
-local function broadcastBrainCoin(): ()
-	budgetUpdateEvent:FireAllClients(playerBrainCoin, baseHP)
+local function broadcastGameState(): ()
+	budgetUpdateEvent:FireAllClients(playerBrainCoin, baseHP, currentLevel, currentWave, totalWavesInLevel)
+end
+
+local function broadcastLevelEvent(eventType: string, data: { [string]: any }?): ()
+	stateChangedEvent:FireAllClients(eventType, data or {})
 end
 
 local function addBrainCoin(amount: number): ()
 	playerBrainCoin += amount
-	broadcastBrainCoin()
+	broadcastGameState()
 end
 
 -------------------------------------------------
 -- Callbacks ZombieSpawner
 -------------------------------------------------
 
+local function getLevelData(): any
+	if currentLevel >= 1 and currentLevel <= TOTAL_LEVELS then
+		return LevelDatabase[currentLevel]
+	end
+	return nil
+end
+
 ZombieSpawner.OnZombieDied = function(zombie)
-	print(`[GameLoop] 💀 Zombie {zombie.UnitId} (ID:{zombie.Id}) tué ! +{Constants.KILL_REWARD} BrainCoin`)
-	addBrainCoin(Constants.KILL_REWARD)
+	local levelData = getLevelData()
+	local reward: number = if levelData then levelData.KillReward else Constants.KILL_REWARD
+	print(`[GameLoop] 💀 Zombie {zombie.UnitId} (ID:{zombie.Id}) tué ! +{reward} BrainCoin`)
+	addBrainCoin(reward)
 end
 
 ZombieSpawner.OnZombieReachedEnd = function(zombie)
 	baseHP -= zombie.Damage
 	print(`[GameLoop] 🏠 Base touchée ! -{zombie.Damage} HP → {baseHP}/{Constants.BASE_HP}`)
-	broadcastBrainCoin()
+	broadcastGameState()
 
 	if baseHP <= 0 and not gameOver then
 		gameOver = true
-		warn(`[GameLoop] 💀 GAME OVER — La base est détruite ! (Vague {currentWave})`)
+		warn(`[GameLoop] 💀 GAME OVER — La base est détruite ! (Niveau {currentLevel}, Vague {currentWave}/{totalWavesInLevel})`)
+		broadcastLevelEvent("GameOver", {
+			Level = currentLevel,
+			Wave = currentWave,
+		})
 	end
 end
 
@@ -120,7 +143,7 @@ local function setupPlates(): ()
 		end
 
 		plate.Touched:Connect(function(otherPart: BasePart): ()
-			if gameOver then return end
+			if gameOver or gameWon then return end
 
 			-- Trouver le Character (gère accessoires + body parts)
 			local character: Model? = getCharacterFromPart(otherPart)
@@ -142,6 +165,12 @@ local function setupPlates(): ()
 				return
 			end
 
+			-- Vérifier que le joueur possède l'unité (inventaire Gacha)
+			if not PlayerInventory.OwnsUnit(player, unitId) then
+				print(`[GameLoop] 🔒 {player.Name} ne possède pas {unitData.Name}`)
+				return
+			end
+
 			-- Vérifier BrainCoin
 			local cost: number = unitData.Cost
 			if playerBrainCoin < cost then
@@ -154,7 +183,7 @@ local function setupPlates(): ()
 
 			-- Déduire le coût
 			playerBrainCoin -= cost
-			broadcastBrainCoin()
+			broadcastGameState()
 
 			-- Position de spawn sur le sol (aléatoire dans la zone)
 			local spawnX: number = Constants.WALL_POSITION.X + rng:NextNumber(
@@ -175,7 +204,7 @@ local function setupPlates(): ()
 			if unitIdResult < 0 then
 				-- Rembourser si échec
 				playerBrainCoin += cost
-				broadcastBrainCoin()
+				broadcastGameState()
 				warn(`[GameLoop] ❌ Échec placement {unitData.Name}`)
 				return
 			end
@@ -188,29 +217,48 @@ local function setupPlates(): ()
 end
 
 -------------------------------------------------
--- Système de vagues
+-- Système de vagues par niveau
 -------------------------------------------------
 
-local function spawnWave(waveNumber: number): ()
-	local zombieCount: number = Constants.BASE_ZOMBIES_PER_WAVE + (waveNumber - 1) * Constants.ZOMBIES_INCREMENT
+local function spawnWave(levelData: any, waveNumber: number): ()
+	local zombieCount: number = levelData.BaseZombieCount + (waveNumber - 1) * levelData.ZombieIncrement
+	local isBossWave: boolean = (levelData.BossWave ~= nil and waveNumber == levelData.BossWave)
 
-	print(`[GameLoop] 🌊 VAGUE {waveNumber} — {zombieCount} zombie(s)`)
+	print(`[GameLoop] 🌊 NIVEAU {currentLevel} — VAGUE {waveNumber}/{totalWavesInLevel} — {zombieCount} zombie(s){if isBossWave then " + BOSS!" else ""}`)
+
+	-- Notifier les clients
+	broadcastLevelEvent("WaveStart", {
+		Level = currentLevel,
+		Wave = waveNumber,
+		TotalWaves = totalWavesInLevel,
+		ZombieCount = zombieCount,
+		IsBossWave = isBossWave,
+	})
+
+	local pool: { string } = levelData.ZombiePool
 
 	for i = 1, zombieCount do
 		if gameOver then break end
 
-		local zombieType: string
-		if waveNumber >= ELITE_WAVE_INTERVAL and i == zombieCount and waveNumber % ELITE_WAVE_INTERVAL == 0 then
-			zombieType = ELITE_ZOMBIE
-		else
-			zombieType = ZOMBIE_TYPES[rng:NextInteger(1, #ZOMBIE_TYPES)]
-		end
-
+		-- Choisir un type de zombie aléatoire dans le pool du niveau
+		local zombieType: string = pool[rng:NextInteger(1, #pool)]
 		ZombieSpawner.SpawnZombie(zombieType)
 
 		if i < zombieCount then
-			task.wait(Constants.WAVE_SPAWN_INTERVAL)
+			task.wait(levelData.WaveSpawnInterval)
 		end
+	end
+
+	-- Spawner le boss en dernier si c'est la vague boss
+	if isBossWave and levelData.BossType and not gameOver then
+		task.wait(levelData.WaveSpawnInterval)
+		local bossHP: number = math.ceil(
+			(UnitDatabase[levelData.BossType] and UnitDatabase[levelData.BossType].HP or 10)
+			* levelData.HPMultiplier
+			* (levelData.BossHPMultiplier or 2.0)
+		)
+		ZombieSpawner.SpawnZombie(levelData.BossType, nil, bossHP)
+		print(`[GameLoop] 👹 BOSS {levelData.BossType} spawné avec {bossHP} HP !`)
 	end
 end
 
@@ -220,42 +268,195 @@ local function waitForWaveEnd(): ()
 	end
 end
 
+local function runLevel(levelNumber: number): boolean
+	local levelData = LevelDatabase[levelNumber]
+	if levelData == nil then
+		warn(`[GameLoop] ❌ Niveau {levelNumber} introuvable dans LevelDatabase`)
+		return false
+	end
+
+	currentLevel = levelNumber
+	totalWavesInLevel = levelData.WaveCount
+	currentWave = 0
+
+	-- Configurer les multiplicateurs du niveau sur le ZombieSpawner
+	ZombieSpawner.SetMultipliers(
+		levelData.HPMultiplier,
+		levelData.SpeedMultiplier,
+		levelData.DamageMultiplier
+	)
+
+	-- Donner le BrainCoin de départ du niveau
+	playerBrainCoin = levelData.StartingBrainCoin
+	baseHP = Constants.BASE_HP
+
+	print(`\n[GameLoop] ═══════════════════════════════════════`)
+	print(`[GameLoop] 🏰 NIVEAU {levelNumber} : {levelData.Theme} {levelData.Name}`)
+	print(`[GameLoop]    Vagues : {levelData.WaveCount} | Zombies : {levelData.BaseZombieCount}+{levelData.ZombieIncrement}/vague`)
+	print(`[GameLoop]    HP×{levelData.HPMultiplier}  Speed×{levelData.SpeedMultiplier}  Dmg×{levelData.DamageMultiplier}`)
+	print(`[GameLoop]    BrainCoin de départ : {levelData.StartingBrainCoin}`)
+	print(`[GameLoop] ═══════════════════════════════════════\n`)
+
+	-- Notifier les clients du début du niveau
+	broadcastLevelEvent("LevelStart", {
+		Level = levelNumber,
+		Name = levelData.Name,
+		Theme = levelData.Theme,
+		TotalWaves = levelData.WaveCount,
+		TotalLevels = TOTAL_LEVELS,
+	})
+	broadcastGameState()
+
+	-- Pause avant la première vague
+	print(`[GameLoop] ⏳ Première vague dans 5 secondes...`)
+	task.wait(5)
+
+	-- Boucle des vagues du niveau
+	for wave = 1, levelData.WaveCount do
+		if gameOver then return false end
+
+		currentWave = wave
+		broadcastGameState()
+
+		spawnWave(levelData, wave)
+		waitForWaveEnd()
+
+		if gameOver then return false end
+
+		-- Vague terminée !
+		print(`[GameLoop] 🏆 Vague {wave}/{levelData.WaveCount} terminée ! +{levelData.WaveBonus} BrainCoin bonus`)
+		addBrainCoin(levelData.WaveBonus)
+
+		broadcastLevelEvent("WaveComplete", {
+			Level = levelNumber,
+			Wave = wave,
+			TotalWaves = levelData.WaveCount,
+		})
+
+		-- Pause entre les vagues (sauf après la dernière)
+		if wave < levelData.WaveCount then
+			print(`[GameLoop] ⏸️ Prochaine vague dans {levelData.WavePause}s...`)
+			task.wait(levelData.WavePause)
+		end
+	end
+
+	-- Niveau terminé !
+	return true
+end
+
 -------------------------------------------------
--- Boucle principale
+-- Boucle principale — Attend la sélection de niveau
 -------------------------------------------------
-print("[GameLoop] 🎮 GameLoop démarrée (Tower Defense — plaques d'achat)")
+print("[GameLoop] 🎮 GameLoop démarrée (Sélection de niveaux)")
+
+-- État de la file d'attente de sélection
+local selectedLevel: number? = nil
+local waitingForSelection: boolean = false
+
+-- Connexion plaques faite une seule fois
+local platesSetup: boolean = false
+
+-- Écouter la sélection de niveau par un joueur
+levelSelectEvent.OnServerEvent:Connect(function(player: Player, levelNumber: unknown)
+	local lv: number = if typeof(levelNumber) == "number" then math.floor(levelNumber) else 0
+	if lv < 1 or lv > TOTAL_LEVELS then return end
+	if not waitingForSelection then return end
+
+	selectedLevel = lv
+	print(`[GameLoop] 📩 {player.Name} a choisi le niveau {lv}`)
+end)
 
 task.spawn(function(): ()
+	-- Attendre qu'au moins un joueur soit connecté
 	waitForPlayers()
 
-	-- Connecter les plaques d'achat
-	setupPlates()
-
-	-- Broadcast BrainCoin initiaux
-	broadcastBrainCoin()
+	-- Connecter les plaques d'achat (une seule fois)
+	if not platesSetup then
+		setupPlates()
+		platesSetup = true
+	end
 
 	-- Démarrer le CombatSystem
 	CombatSystem.Start()
 
-	-- Pause initiale
-	print("[GameLoop] ⏳ Première vague dans 5 secondes...")
-	task.wait(5)
+	-- Boucle : attendre sélection → jouer niveau → retour
+	while true do
+		-- Reset état
+		gameOver = false
+		gameWon = false
+		selectedLevel = nil
+		waitingForSelection = true
+		currentLevel = 0
+		currentWave = 0
+		totalWavesInLevel = 0
 
-	-- Boucle de vagues
-	while not gameOver do
-		currentWave += 1
-		spawnWave(currentWave)
-		waitForWaveEnd()
+		print("[GameLoop] ⏳ En attente de sélection de niveau...")
 
-		if gameOver then break end
+		-- Attendre qu'un joueur sélectionne un niveau
+		while selectedLevel == nil do
+			task.wait(0.5)
+		end
+		waitingForSelection = false
 
-		print(`[GameLoop] 🏆 Vague {currentWave} terminée ! +{Constants.WAVE_BONUS} BrainCoin bonus`)
-		addBrainCoin(Constants.WAVE_BONUS)
+		local chosenLevel: number = selectedLevel :: number
+		print(`[GameLoop] 🎯 Niveau {chosenLevel} sélectionné — Lancement !`)
 
-		print(`[GameLoop] ⏸️ Prochaine vague dans {Constants.WAVE_PAUSE}s...`)
-		task.wait(Constants.WAVE_PAUSE)
+		-- Notification
+		broadcastLevelEvent("LevelSelected", {
+			Level = chosenLevel,
+			Name = LevelDatabase[chosenLevel].Name,
+			Theme = LevelDatabase[chosenLevel].Theme,
+		})
+
+		-- Petite pause pour laisser le joueur arriver sur le mur
+		task.wait(2)
+
+		-- Lancer le niveau
+		local success: boolean = runLevel(chosenLevel)
+
+		if success and not gameOver then
+			print(`[GameLoop] ✅ NIVEAU {chosenLevel} TERMINÉ !`)
+
+			-- Récompense GachaTokens
+			local tokenReward: number = GachaCatalog.TokenRewards[chosenLevel] or 1
+			for _, p in Players:GetPlayers() do
+				PlayerInventory.AddTokens(p, tokenReward)
+				local newBalance: number = PlayerInventory.GetTokens(p)
+				gachaInfoEvent:FireClient(p, { Tokens = newBalance })
+				print(`[GameLoop] 🎫 {p.Name} reçoit {tokenReward} GachaToken(s) → {newBalance}`)
+			end
+
+			broadcastLevelEvent("LevelComplete", {
+				Level = chosenLevel,
+				TotalLevels = TOTAL_LEVELS,
+			})
+
+			-- Pause avant retour au menu
+			task.wait(8)
+		elseif gameOver then
+			-- Pause après game over avant retour au menu
+			task.wait(8)
+		end
+
+		-- Nettoyer les zombies restants
+		for id, _ in ZombieSpawner.ActiveZombies do
+			ZombieSpawner.DestroyZombie(id)
+		end
+
+		-- Téléporter tous les joueurs au hub
+		local HUB_RETURN_POS: Vector3 = Constants.SPAWN_CENTER + Vector3.new(0, 3, 15)
+		for _, p in Players:GetPlayers() do
+			local character = p.Character
+			if character then
+				local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+				if hrp then
+					hrp.CFrame = CFrame.new(HUB_RETURN_POS)
+				end
+			end
+		end
+
+		-- Notifier le retour au menu
+		broadcastLevelEvent("ReturnToMenu", {})
+		print("[GameLoop] 🔄 Retour au menu de sélection de niveau")
 	end
-
-	CombatSystem.Stop()
-	print(`[GameLoop] 🏁 Partie terminée à la vague {currentWave}`)
 end)

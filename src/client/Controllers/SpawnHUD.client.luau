@@ -174,7 +174,194 @@ local returnCorner: UICorner = Instance.new("UICorner")
 returnCorner.CornerRadius = UDim.new(0, 10)
 returnCorner.Parent = returnBtn
 
-returnBtn.MouseButton1Click:Connect(function()
+-------------------------------------------------
+-- 4b. Popup de confirmation Retour au Hub
+-------------------------------------------------
+local confirmOverlay: Frame = Instance.new("Frame")
+confirmOverlay.Name = "ConfirmOverlay"
+confirmOverlay.Size = UDim2.fromScale(1, 1)
+confirmOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+confirmOverlay.BackgroundTransparency = 0.5
+confirmOverlay.BorderSizePixel = 0
+confirmOverlay.Visible = false
+confirmOverlay.ZIndex = 50
+confirmOverlay.Parent = screenGui
+
+local confirmBox: Frame = Instance.new("Frame")
+confirmBox.Name = "ConfirmBox"
+confirmBox.Size = UDim2.new(0, 380, 0, 200)
+confirmBox.Position = UDim2.fromScale(0.5, 0.5)
+confirmBox.AnchorPoint = Vector2.new(0.5, 0.5)
+confirmBox.BackgroundColor3 = Color3.fromRGB(14, 11, 28)
+confirmBox.BackgroundTransparency = 0.05
+confirmBox.BorderSizePixel = 0
+confirmBox.ZIndex = 51
+confirmBox.Parent = confirmOverlay
+
+local confirmCorner: UICorner = Instance.new("UICorner")
+confirmCorner.CornerRadius = UDim.new(0, 16)
+confirmCorner.Parent = confirmBox
+
+local confirmStroke: UIStroke = Instance.new("UIStroke")
+confirmStroke.Color = Color3.fromRGB(255, 80, 60)
+confirmStroke.Thickness = 2
+confirmStroke.Transparency = 0.3
+confirmStroke.Parent = confirmBox
+
+-- Accent rouge en haut
+local confirmAccent: Frame = Instance.new("Frame")
+confirmAccent.Size = UDim2.new(1, 0, 0, 3)
+confirmAccent.BackgroundColor3 = Color3.fromRGB(255, 80, 60)
+confirmAccent.BorderSizePixel = 0
+confirmAccent.ZIndex = 52
+confirmAccent.Parent = confirmBox
+
+-- Icône warning
+local warnIcon: TextLabel = Instance.new("TextLabel")
+warnIcon.Size = UDim2.new(0, 40, 0, 40)
+warnIcon.Position = UDim2.new(0.5, -20, 0, 12)
+warnIcon.BackgroundTransparency = 1
+warnIcon.Text = "⚠️"
+warnIcon.TextScaled = true
+warnIcon.Font = Enum.Font.GothamBlack
+warnIcon.ZIndex = 52
+warnIcon.Parent = confirmBox
+
+-- Titre
+local confirmTitle: TextLabel = Instance.new("TextLabel")
+confirmTitle.Size = UDim2.new(0.9, 0, 0, 26)
+confirmTitle.Position = UDim2.new(0.05, 0, 0, 55)
+confirmTitle.BackgroundTransparency = 1
+confirmTitle.Text = "QUITTER LE NIVEAU ?"
+confirmTitle.TextColor3 = Color3.fromRGB(255, 90, 70)
+confirmTitle.TextStrokeTransparency = 0.3
+confirmTitle.TextStrokeColor3 = Color3.new(0, 0, 0)
+confirmTitle.TextScaled = true
+confirmTitle.Font = Enum.Font.GothamBlack
+confirmTitle.ZIndex = 52
+confirmTitle.Parent = confirmBox
+
+local confirmTitleConstraint: UITextSizeConstraint = Instance.new("UITextSizeConstraint")
+confirmTitleConstraint.MaxTextSize = 22
+confirmTitleConstraint.Parent = confirmTitle
+
+-- Message d'avertissement
+local confirmMsg: TextLabel = Instance.new("TextLabel")
+confirmMsg.Size = UDim2.new(0.85, 0, 0, 40)
+confirmMsg.Position = UDim2.new(0.075, 0, 0, 85)
+confirmMsg.BackgroundTransparency = 1
+confirmMsg.Text = "Toute la progression du niveau en cours\nsera perdue si tu quittes maintenant !"
+confirmMsg.TextColor3 = Color3.fromRGB(200, 200, 220)
+confirmMsg.TextStrokeTransparency = 0.5
+confirmMsg.TextScaled = true
+confirmMsg.TextWrapped = true
+confirmMsg.Font = Enum.Font.GothamMedium
+confirmMsg.ZIndex = 52
+confirmMsg.Parent = confirmBox
+
+local confirmMsgConstraint: UITextSizeConstraint = Instance.new("UITextSizeConstraint")
+confirmMsgConstraint.MaxTextSize = 15
+confirmMsgConstraint.Parent = confirmMsg
+
+-- Boutons : Annuler / Confirmer
+local btnRow: Frame = Instance.new("Frame")
+btnRow.Size = UDim2.new(0.9, 0, 0, 40)
+btnRow.Position = UDim2.new(0.05, 0, 1, -50)
+btnRow.BackgroundTransparency = 1
+btnRow.ZIndex = 52
+btnRow.Parent = confirmBox
+
+local btnLayout: UIListLayout = Instance.new("UIListLayout")
+btnLayout.FillDirection = Enum.FillDirection.Horizontal
+btnLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+btnLayout.Padding = UDim.new(0, 16)
+btnLayout.Parent = btnRow
+
+-- Bouton Annuler
+local cancelBtn: TextButton = Instance.new("TextButton")
+cancelBtn.Name = "Cancel"
+cancelBtn.Size = UDim2.new(0, 145, 0, 38)
+cancelBtn.BackgroundColor3 = Color3.fromRGB(50, 45, 70)
+cancelBtn.BackgroundTransparency = 0.15
+cancelBtn.BorderSizePixel = 0
+cancelBtn.Text = "✖ Annuler"
+cancelBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
+cancelBtn.TextStrokeTransparency = 0.3
+cancelBtn.TextScaled = true
+cancelBtn.Font = Enum.Font.GothamBold
+cancelBtn.AutoButtonColor = true
+cancelBtn.ZIndex = 53
+cancelBtn.Parent = btnRow
+
+local cancelCorner: UICorner = Instance.new("UICorner")
+cancelCorner.CornerRadius = UDim.new(0, 10)
+cancelCorner.Parent = cancelBtn
+
+local cancelConstraint: UITextSizeConstraint = Instance.new("UITextSizeConstraint")
+cancelConstraint.MaxTextSize = 16
+cancelConstraint.Parent = cancelBtn
+
+-- Bouton Confirmer (rouge)
+local confirmBtn: TextButton = Instance.new("TextButton")
+confirmBtn.Name = "Confirm"
+confirmBtn.Size = UDim2.new(0, 145, 0, 38)
+confirmBtn.BackgroundColor3 = Color3.fromRGB(200, 45, 35)
+confirmBtn.BackgroundTransparency = 0.15
+confirmBtn.BorderSizePixel = 0
+confirmBtn.Text = "🏠 Quitter"
+confirmBtn.TextColor3 = Color3.new(1, 1, 1)
+confirmBtn.TextStrokeTransparency = 0.2
+confirmBtn.TextScaled = true
+confirmBtn.Font = Enum.Font.GothamBlack
+confirmBtn.AutoButtonColor = true
+confirmBtn.ZIndex = 53
+confirmBtn.Parent = btnRow
+
+local confirmBtnCorner: UICorner = Instance.new("UICorner")
+confirmBtnCorner.CornerRadius = UDim.new(0, 10)
+confirmBtnCorner.Parent = confirmBtn
+
+local confirmBtnConstraint: UITextSizeConstraint = Instance.new("UITextSizeConstraint")
+confirmBtnConstraint.MaxTextSize = 16
+confirmBtnConstraint.Parent = confirmBtn
+
+-- Logique de la popup
+local function showConfirm(): ()
+	confirmOverlay.Visible = true
+	confirmBox.Size = UDim2.new(0, 0, 0, 0)
+	TweenService:Create(confirmBox, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Size = UDim2.new(0, 380, 0, 200),
+	}):Play()
+end
+
+local function hideConfirm(): ()
+	local tw = TweenService:Create(confirmBox, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+		Size = UDim2.new(0, 0, 0, 0),
+	})
+	tw:Play()
+	tw.Completed:Connect(function()
+		confirmOverlay.Visible = false
+	end)
+end
+
+cancelBtn.MouseButton1Click:Connect(function()
+	hideConfirm()
+end)
+
+-- Clic en dehors de la box → annuler
+confirmOverlay.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		local pos = confirmBox.AbsolutePosition
+		local sz = confirmBox.AbsoluteSize
+		local m = input.Position
+		if m.X < pos.X or m.X > pos.X + sz.X or m.Y < pos.Y or m.Y > pos.Y + sz.Y then
+			hideConfirm()
+		end
+	end
+end)
+
+confirmBtn.MouseButton1Click:Connect(function()
+	hideConfirm()
 	portalEnteredEvent:FireServer("ReturnToHub")
 	returnBtn.Visible = false
 	welcomeFrame.Visible = true
@@ -187,6 +374,10 @@ returnBtn.MouseButton1Click:Connect(function()
 			(child :: UIStroke).Transparency = 0.3
 		end
 	end
+end)
+
+returnBtn.MouseButton1Click:Connect(function()
+	showConfirm()
 end)
 
 -------------------------------------------------
@@ -290,14 +481,41 @@ end
 -------------------------------------------------
 portalEnteredEvent.OnClientEvent:Connect(function(portalId: string)
 	if portalId == "GameMap" then
-		-- Le serveur gère la TP, on affiche le bouton retour
-		returnBtn.Visible = true
-		welcomeFrame.Visible = false
+		-- Le LevelSelectHUD gère l'affichage de la sélection de niveau
+		-- Ne rien faire ici (pas de TP immédiate, pas de bouton retour)
 	else
 		-- Ouvrir la popup correspondante
 		local popup = popups[portalId]
 		if popup then
 			tweenIn(popup)
+		end
+	end
+end)
+
+-------------------------------------------------
+-- 7. Écouter les événements de niveau pour le bouton retour
+-------------------------------------------------
+local stateChangedEvent: RemoteEvent = eventsFolder:WaitForChild("StateChanged") :: RemoteEvent
+
+stateChangedEvent.OnClientEvent:Connect(function(eventType: unknown, data: unknown): ()
+	local eType: string = if typeof(eventType) == "string" then eventType else ""
+
+	if eType == "LevelStart" or eType == "LevelSelected" then
+		-- Le niveau démarre → afficher le bouton retour, cacher le welcome
+		returnBtn.Visible = true
+		welcomeFrame.Visible = false
+	elseif eType == "ReturnToMenu" or eType == "GameOver" or eType == "LevelComplete" then
+		-- Retour au hub → cacher le bouton retour, ré-afficher welcome
+		returnBtn.Visible = false
+		welcomeFrame.Visible = true
+		welcomeFrame.BackgroundTransparency = 0.3
+		for _, child in welcomeFrame:GetChildren() do
+			if child:IsA("TextLabel") then
+				(child :: TextLabel).TextTransparency = 0
+				(child :: TextLabel).TextStrokeTransparency = 0
+			elseif child:IsA("UIStroke") then
+				(child :: UIStroke).Transparency = 0.3
+			end
 		end
 	end
 end)

@@ -58,33 +58,71 @@ function BoardManager.PlaceUnit(unitId: string, position: Vector3, owner: Player
 	-- Chercher le modèle dans Assets
 	local templateName: string = `Unit_{unitId}`
 	local template: Instance? = assetsFolder:FindFirstChild(templateName)
-	if template == nil then
-		warn(`[BoardManager] ❌ Asset introuvable : {templateName}`)
-		return -1
-	end
-
-	-- Cloner le modèle
-	local model: Model = template:Clone() :: Model
 
 	nextUnitId += 1
 	local id: number = nextUnitId
-	model.Name = `PlacedUnit_{unitId}_{id}`
 
-	-- Uniformiser la taille (tous à UNIT_MODEL_HEIGHT studs de haut)
-	local scaleOk: boolean, scaleErr: string? = pcall(function(): ()
-		local _, origSize: Vector3 = model:GetBoundingBox()
-		local currentHeight: number = origSize.Y
-		if currentHeight > 0 then
-			local currentScale: number = model:GetScale()
-			local scaleFactor: number = (Constants.UNIT_MODEL_HEIGHT / currentHeight) * currentScale
-			model:ScaleTo(scaleFactor)
-			print(`[BoardManager] 📐 {unitId} — hauteur orig: {math.floor(currentHeight)} → cible: {Constants.UNIT_MODEL_HEIGHT} (scale: {string.format("%.3f", scaleFactor)})`)
-		else
-			warn(`[BoardManager] ⚠️ {unitId} — bounding box vide (pas de BasePart ?)`)
+	local model: Model
+
+	if template ~= nil then
+		-- Cloner le modèle existant
+		model = template:Clone() :: Model
+		model.Name = `PlacedUnit_{unitId}_{id}`
+
+		-- Uniformiser la taille (tous à UNIT_MODEL_HEIGHT studs de haut)
+		local scaleOk: boolean, scaleErr: string? = pcall(function(): ()
+			local _, origSize: Vector3 = model:GetBoundingBox()
+			local currentHeight: number = origSize.Y
+			if currentHeight > 0 then
+				local currentScale: number = model:GetScale()
+				local scaleFactor: number = (Constants.UNIT_MODEL_HEIGHT / currentHeight) * currentScale
+				model:ScaleTo(scaleFactor)
+				print(`[BoardManager] 📐 {unitId} — hauteur orig: {math.floor(currentHeight)} → cible: {Constants.UNIT_MODEL_HEIGHT} (scale: {string.format("%.3f", scaleFactor)})`)
+			else
+				warn(`[BoardManager] ⚠️ {unitId} — bounding box vide (pas de BasePart ?)`)
+			end
+		end)
+		if not scaleOk then
+			warn(`[BoardManager] ⚠️ Erreur scale {unitId}: {scaleErr or "inconnue"}`)
 		end
-	end)
-	if not scaleOk then
-		warn(`[BoardManager] ⚠️ Erreur scale {unitId}: {scaleErr or "inconnue"}`)
+	else
+		-- Aucun asset 3D : créer une sphère placeholder avec la couleur de l'unité
+		warn(`[BoardManager] ⚠️ Asset introuvable : {templateName} — sphère placeholder créée`)
+		model = Instance.new("Model")
+		model.Name = `PlacedUnit_{unitId}_{id}`
+
+		local sphere: Part = Instance.new("Part")
+		sphere.Name = "SpherePlaceholder"
+		sphere.Shape = Enum.PartType.Ball
+		sphere.Size = Vector3.new(Constants.UNIT_MODEL_HEIGHT, Constants.UNIT_MODEL_HEIGHT, Constants.UNIT_MODEL_HEIGHT)
+		sphere.Color = unitData.Color
+		sphere.Material = Enum.Material.SmoothPlastic
+		sphere.TopSurface = Enum.SurfaceType.Smooth
+		sphere.BottomSurface = Enum.SurfaceType.Smooth
+		sphere.Anchored = true
+		sphere.CanCollide = false
+		sphere.Parent = model
+
+		model.PrimaryPart = sphere
+
+		-- BillboardGui pour afficher le nom au-dessus de la sphère
+		local billboard: BillboardGui = Instance.new("BillboardGui")
+		billboard.Name = "NameTag"
+		billboard.Size = UDim2.new(0, 120, 0, 40)
+		billboard.StudsOffset = Vector3.new(0, Constants.UNIT_MODEL_HEIGHT * 0.7, 0)
+		billboard.AlwaysOnTop = true
+		billboard.Parent = sphere
+
+		local nameLabel: TextLabel = Instance.new("TextLabel")
+		nameLabel.Size = UDim2.fromScale(1, 1)
+		nameLabel.BackgroundTransparency = 1
+		nameLabel.Text = unitData.Name
+		nameLabel.TextColor3 = unitData.Color
+		nameLabel.TextStrokeTransparency = 0.3
+		nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+		nameLabel.TextScaled = true
+		nameLabel.Font = Enum.Font.GothamBlack
+		nameLabel.Parent = billboard
 	end
 
 	-- Recalculer après mise à l'échelle
