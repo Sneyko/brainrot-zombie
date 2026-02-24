@@ -33,6 +33,7 @@ local budgetUpdateEvent: RemoteEvent = eventsFolder:WaitForChild("BudgetUpdate")
 local stateChangedEvent: RemoteEvent = eventsFolder:WaitForChild("StateChanged") :: RemoteEvent
 local levelSelectEvent: RemoteEvent = eventsFolder:WaitForChild("LevelSelect") :: RemoteEvent
 local gachaInfoEvent: RemoteEvent = eventsFolder:WaitForChild("GachaInfo") :: RemoteEvent
+local moveUnitEvent: RemoteEvent = eventsFolder:WaitForChild("MoveUnit") :: RemoteEvent
 
 -- Constantes
 local MIN_PLAYERS: number = 1
@@ -185,18 +186,17 @@ local function setupPlates(): ()
 			playerBrainCoin -= cost
 			broadcastGameState()
 
-			-- Position de spawn sur le sol (aléatoire dans la zone)
-			local spawnX: number = Constants.WALL_POSITION.X + rng:NextNumber(
-				-Constants.UNIT_SPAWN_X_SPREAD,
-				Constants.UNIT_SPAWN_X_SPREAD
-			)
-			local spawnZ: number = rng:NextNumber(
-				Constants.UNIT_SPAWN_Z_MIN,
-				Constants.UNIT_SPAWN_Z_MAX
-			)
-			local spawnPos: Vector3 = Vector3.new(spawnX, Constants.GROUND_TOP_Y, spawnZ)
+			-- Trouver une case libre sur la grille tactique
+			local freeRow: number?, freeCol: number? = BoardManager.FindFreeCell()
+			if freeRow == nil or freeCol == nil then
+				playerBrainCoin += cost
+				broadcastGameState()
+				print(`[GameLoop] ❌ Grille pleine — impossible de placer {unitData.Name}`)
+				return
+			end
+			local spawnPos: Vector3 = Constants.GridToWorld(freeRow :: number, freeCol :: number)
 
-			print(`[GameLoop] 🔧 Spawn {unitData.Name} à ({math.floor(spawnX)}, {Constants.GROUND_TOP_Y}, {math.floor(spawnZ)})`)
+			print(`[GameLoop] 🔧 Spawn {unitData.Name} sur grille ({freeRow}, {freeCol})`)
 
 			-- Placer l'unité sur le sol (clone depuis Assets)
 			local unitIdResult: number = BoardManager.PlaceUnit(unitId, spawnPos, player)
@@ -379,6 +379,42 @@ task.spawn(function(): ()
 	-- Démarrer le CombatSystem
 	CombatSystem.Start()
 
+	-------------------------------------------------
+	-- Handler MoveUnit (repositionnement via grille tactique)
+	-- Sécurisé : validation complète côté serveur.
+	-------------------------------------------------
+	moveUnitEvent.OnServerEvent:Connect(function(senderPlayer: Player, unitIdRaw: unknown, rowRaw: unknown, colRaw: unknown)
+		-- Validation des types
+		local unitId: number = if typeof(unitIdRaw) == "number" then math.floor(unitIdRaw) else 0
+		local row: number = if typeof(rowRaw) == "number" then math.floor(rowRaw) else 0
+		local col: number = if typeof(colRaw) == "number" then math.floor(colRaw) else 0
+
+		if unitId <= 0 then return end
+
+		-- Vérifier que l'unité existe
+		local unit = BoardManager.PlacedUnits[unitId]
+		if unit == nil then
+			warn(`[GameLoop] ❌ MoveUnit — unité {unitId} introuvable`)
+			return
+		end
+
+		-- Validation limites grille
+		if row < 1 or row > Constants.GRID_ROWS then return end
+		if col < 1 or col > Constants.GRID_PLACEABLE_COLS then return end
+
+		-- Vérifier que la case cible est libre
+		if not BoardManager.IsGridCellFree(row, col) then
+			print(`[GameLoop] ❌ MoveUnit — case ({row},{col}) occupée`)
+			return
+		end
+
+		-- Déplacer l'unité
+		local success: boolean = BoardManager.MoveUnit(unitId, row, col)
+		if success then
+			print(`[GameLoop] ✅ {senderPlayer.Name} a déplacé unité {unitId} vers ({row},{col})`)
+		end
+	end)
+
 	-- Boucle : attendre sélection → jouer niveau → retour
 	while true do
 		-- Reset état
@@ -442,6 +478,9 @@ task.spawn(function(): ()
 		for id, _ in ZombieSpawner.ActiveZombies do
 			ZombieSpawner.DestroyZombie(id)
 		end
+
+		-- Nettoyer les unités placées et la grille d'occupancy
+		BoardManager.ClearAll()
 
 		-- Téléporter tous les joueurs au hub
 		local HUB_RETURN_POS: Vector3 = Constants.SPAWN_CENTER + Vector3.new(0, 3, 15)

@@ -27,10 +27,10 @@ Constants.WALL_FRONT_Z  = -201     -- Face avant du mur (WALL_POSITION.Z + WALL_
 -------------------------------------------------
 -- Grille (logique interne)
 -------------------------------------------------
-Constants.GRID_ROWS    = 5
-Constants.GRID_COLS    = 9   -- Col 1-8 = placement, Col 9 = spawn zombie
-Constants.TILE_SIZE    = 6
-Constants.TILE_SPACING = 0
+Constants.GRID_ROWS    = 16
+Constants.GRID_COLS    = 11   -- Col 1-10 = placement, Col 11 = spawn zombie
+Constants.TILE_SIZE    = 10
+Constants.TILE_SPACING = 2    -- Espacement entre les cases (studs)
 
 -------------------------------------------------
 -- Plaques de placement (sur le mur)
@@ -56,34 +56,34 @@ Constants.ZOMBIE_BASE_Z  = -195   -- Z cible (pied du mur)
 -------------------------------------------------
 -- Économie (BrainCoin)
 -------------------------------------------------
-Constants.STARTING_BRAINCOIN = 8
-Constants.KILL_REWARD        = 2
-Constants.WAVE_BONUS         = 4
+Constants.STARTING_BRAINCOIN = 5
+Constants.KILL_REWARD        = 1
+Constants.WAVE_BONUS         = 2
 
 -------------------------------------------------
 -- Vagues (Waves)
 -------------------------------------------------
-Constants.WAVE_SPAWN_INTERVAL  = 3
-Constants.WAVE_PAUSE           = 8
-Constants.BASE_ZOMBIES_PER_WAVE = 3
+Constants.WAVE_SPAWN_INTERVAL  = 2.5
+Constants.WAVE_PAUSE           = 7
+Constants.BASE_ZOMBIES_PER_WAVE = 4
 Constants.ZOMBIES_INCREMENT    = 2
 
 -------------------------------------------------
 -- Zombies (mouvement)
 -------------------------------------------------
-Constants.ZOMBIE_SPEED = 4   -- Studs/seconde
+Constants.ZOMBIE_SPEED = 5   -- Studs/seconde
 
 -------------------------------------------------
 -- Combat
 -------------------------------------------------
-Constants.DEFAULT_RANGE     = 80    -- Portée par défaut (studs) — haute car tirs du mur vers le sol
-Constants.DEFAULT_FIRE_RATE = 1
+Constants.DEFAULT_RANGE     = 60    -- Portée par défaut (studs) — haute car tirs du mur vers le sol
+Constants.DEFAULT_FIRE_RATE = 0.8
 Constants.BEAM_DURATION     = 0.1
 
 -------------------------------------------------
 -- Santé de la base
 -------------------------------------------------
-Constants.BASE_HP = 20
+Constants.BASE_HP = 18
 
 -------------------------------------------------
 -- Spawn Hub (Lobby)
@@ -139,5 +139,58 @@ Constants.PORTALS = {
 Constants.FOUNTAIN_RADIUS     = 14
 Constants.FOUNTAIN_HEIGHT     = 5
 Constants.FOUNTAIN_JET_HEIGHT = 25
+
+-------------------------------------------------
+-- Grille tactique (Placement Top-Down)
+-- La grille 5×8 couvre la zone défensive sur le sol.
+-- Rows = lanes horizontales (axe X), Cols = profondeur (axe Z).
+-- Col 1 est la plus proche du mur, Col 8 la plus avancée.
+-------------------------------------------------
+Constants.GRID_ORIGIN_Z       = -180    -- Z du bord avant de la colonne 1 (près du mur)
+Constants.GRID_PLACEABLE_COLS = 10      -- Colonnes 1-10 pour le placement (11 = spawn zombie)
+
+-- Caméra Top-Down
+Constants.TOPDOWN_CAM_HEIGHT  = 140     -- Hauteur caméra en vue tactique (studs) — grille 16×10
+Constants.TOPDOWN_TWEEN_TIME  = 0.8     -- Durée transition caméra (secondes)
+Constants.TOPDOWN_PAN_SPEED   = 80      -- Vitesse de déplacement horizontal (studs/sec)
+Constants.TOPDOWN_PAN_LIMIT_X = 80      -- Limite horizontale du pan depuis le centre (studs)
+Constants.TOPDOWN_PAN_LIMIT_Z = 50      -- Limite en profondeur du pan depuis le centre (studs)
+
+-------------------------------------------------
+-- Fonctions utilitaires Grille (partagées client/serveur)
+-------------------------------------------------
+
+--- Convertit une coordonnée de grille (row, col) en position worldspace.
+--- Retourne le centre de la tile au niveau du sol (Y = GROUND_TOP_Y).
+function Constants.GridToWorld(row: number, col: number): Vector3
+	local cellStep: number = Constants.TILE_SIZE + Constants.TILE_SPACING
+	local totalWidth: number = Constants.GRID_ROWS * cellStep
+	local x: number = Constants.WALL_POSITION.X - totalWidth / 2 + (row - 0.5) * cellStep
+	local z: number = Constants.GRID_ORIGIN_Z + (col - 0.5) * cellStep
+	return Vector3.new(x, Constants.GROUND_TOP_Y, z)
+end
+
+--- Convertit une position worldspace en coordonnées de grille (row, col).
+--- Retourne (nil, nil) si la position est hors des limites de la grille.
+function Constants.WorldToGrid(worldPos: Vector3): (number?, number?)
+	local cellStep: number = Constants.TILE_SIZE + Constants.TILE_SPACING
+	local totalWidth: number = Constants.GRID_ROWS * cellStep
+	local localX: number = worldPos.X - (Constants.WALL_POSITION.X - totalWidth / 2)
+	local localZ: number = worldPos.Z - Constants.GRID_ORIGIN_Z
+	local row: number = math.floor(localX / cellStep) + 1
+	local col: number = math.floor(localZ / cellStep) + 1
+	if row >= 1 and row <= Constants.GRID_ROWS and col >= 1 and col <= Constants.GRID_PLACEABLE_COLS then
+		return row, col
+	end
+	return nil, nil
+end
+
+--- Retourne la position worldspace du centre de la grille
+function Constants.GetGridCenter(): Vector3
+	return Constants.GridToWorld(
+		math.ceil(Constants.GRID_ROWS / 2),
+		math.ceil(Constants.GRID_PLACEABLE_COLS / 2)
+	)
+end
 
 return Constants

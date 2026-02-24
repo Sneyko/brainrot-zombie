@@ -28,6 +28,8 @@ export type PlacedUnit = {
 	Owner: Player?,
 	Model: Model,         -- Modèle 3D cloné depuis Assets
 	Position: Vector3,    -- Position world (centre au sol)
+	GridRow: number?,     -- Ligne sur la grille tactique (1-5)
+	GridCol: number?,     -- Colonne sur la grille tactique (1-8)
 }
 
 -------------------------------------------------
@@ -37,6 +39,64 @@ local BoardManager = {}
 
 BoardManager.PlacedUnits = {} :: { [number]: PlacedUnit }
 local nextUnitId: number = 0
+
+-- Grille d'occupancy : clé "row_col" → ID de l'unité placée
+BoardManager.GridOccupancy = {} :: { [string]: number }
+
+-------------------------------------------------
+-- Helpers Grille
+-------------------------------------------------
+
+local function gridKey(row: number, col: number): string
+	return `{row}_{col}`
+end
+
+--- Vérifie si une case de la grille est libre et dans les limites
+function BoardManager.IsGridCellFree(row: number, col: number): boolean
+	if row < 1 or row > Constants.GRID_ROWS then return false end
+	if col < 1 or col > Constants.GRID_PLACEABLE_COLS then return false end
+	return BoardManager.GridOccupancy[gridKey(row, col)] == nil
+end
+
+--- Trouve la première case libre (priorise colonnes proches du mur)
+function BoardManager.FindFreeCell(): (number?, number?)
+	for col = 1, Constants.GRID_PLACEABLE_COLS do
+		for row = 1, Constants.GRID_ROWS do
+			if BoardManager.IsGridCellFree(row, col) then
+				return row, col
+			end
+		end
+	end
+	return nil, nil
+end
+
+--- Retourne l'ID de l'unité à la case (row, col), ou nil
+function BoardManager.GetUnitAtCell(row: number, col: number): number?
+	return BoardManager.GridOccupancy[gridKey(row, col)]
+end
+
+--- Enregistre une unité sur la grille d'occupancy
+local function registerOnGrid(unitId: number, row: number, col: number): ()
+	BoardManager.GridOccupancy[gridKey(row, col)] = unitId
+	local unit: PlacedUnit? = BoardManager.PlacedUnits[unitId]
+	if unit then
+		unit.GridRow = row
+		unit.GridCol = col
+	end
+end
+
+--- Retire une unité de la grille d'occupancy
+local function clearFromGrid(unitId: number): ()
+	local unit: PlacedUnit? = BoardManager.PlacedUnits[unitId]
+	if unit and unit.GridRow and unit.GridCol then
+		local key: string = gridKey(unit.GridRow :: number, unit.GridCol :: number)
+		if BoardManager.GridOccupancy[key] == unitId then
+			BoardManager.GridOccupancy[key] = nil
+		end
+		unit.GridRow = nil
+		unit.GridCol = nil
+	end
+end
 
 -------------------------------------------------
 -- Placement d'unité (clone depuis Assets)
@@ -152,11 +212,20 @@ function BoardManager.PlaceUnit(unitId: string, position: Vector3, owner: Player
 		Owner = owner,
 		Model = model,
 		Position = spawnPos,
+		GridRow = nil,
+		GridCol = nil,
 	}
 
 	BoardManager.PlacedUnits[id] = unit
 
-	print(`[BoardManager] ✅ {unitData.Name} placé (ID:{id}) à ({math.floor(spawnPos.X)}, {math.floor(spawnPos.Z)})`)
+	-- Auto-enregistrer sur la grille si la position correspond à une case
+	local gRow: number?, gCol: number? = Constants.WorldToGrid(spawnPos)
+	if gRow and gCol then
+		registerOnGrid(id, gRow :: number, gCol :: number)
+		print(`[BoardManager] ✅ {unitData.Name} placé (ID:{id}) sur grille ({gRow}, {gCol})`)
+	else
+		print(`[BoardManager] ✅ {unitData.Name} placé (ID:{id}) à ({math.floor(spawnPos.X)}, {math.floor(spawnPos.Z)})`)
+	end
 	return id
 end
 
@@ -169,6 +238,9 @@ function BoardManager.RemoveUnit(id: number): ()
 	local unit: PlacedUnit? = BoardManager.PlacedUnits[id]
 	if unit == nil then return end
 
+	-- Retirer de la grille d'occupancy
+	clearFromGrid(id)
+
 	if unit.Model then
 		unit.Model:Destroy()
 	end
@@ -176,6 +248,60 @@ function BoardManager.RemoveUnit(id: number): ()
 	BoardManager.PlacedUnits[id] = nil
 	print(`[BoardManager] 🗑️ Unité {id} supprimée`)
 end
+
+-------------------------------------------------
+-- Déplacement d'unité (repositionnement sur la grille)
+-------------------------------------------------
+
+--- Déplace une unité existante vers une case de la grille.
+--- Vérifie les limites et l'occupancy. Retourne true si succès.
+function BoardManager.MoveUnit(id: number, targetRow: number, targetCol: number): boolean
+	local unit: PlacedUnit? = BoardManager.PlacedUnits[id]
+	if unit == nil then
+		warn(`[BoardManager] ❌ MoveUnit — unité {id} introuvable`)
+		return false
+	end
+
+	-- Valider les limites de la grille
+	if targetRow < 1 or targetRow > Constants.GRID_ROWS then
+		warn(`[BoardManager] ❌ MoveUnit — row {targetRow} hors limites`)
+		return false
+	end
+	if targetCol < 1 or targetCol > Constants.GRID_PLACEABLE_COLS then
+		warn(`[BoardManager] ❌ MoveUnit — col {targetCol} hors limites`)
+		return false
+	end
+
+	-- Vérifier que la case cible est libre
+	if not BoardManager.IsGridCellFree(targetRow, targetCol) then
+		print(`[BoardManager] ❌ MoveUnit — case ({targetRow},{targetCol}) occupée`)
+		return false
+	end
+
+	-- Retirer l'ancienne position de la grille
+	clearFromGrid(id)
+
+	-- Calculer la nouvelle position world
+	local gridPos: Vector3 = Constants.GridToWorld(targetRow, targetCol)
+	local _, size: Vector3 = unit.Model:GetBoundingBox()
+	local groundY: number = Constants.GROUND_TOP_Y + size.Y / 2
+	local newPos: Vector3 = Vector3.new(gridPos.X, groundY, gridPos.Z)
+
+	-- Déplacer le modèle 3D (face aux zombies = +Z)
+	local lookTarget: Vector3 = newPos + Vector3.new(0, 0, 1)
+	unit.Model:PivotTo(CFrame.lookAt(newPos, lookTarget))
+	unit.Position = newPos
+
+	-- Enregistrer la nouvelle position
+	registerOnGrid(id, targetRow, targetCol)
+
+	print(`[BoardManager] 🔄 Unité {id} ({unit.UnitId}) déplacée → grille ({targetRow}, {targetCol})`)
+	return true
+end
+
+-------------------------------------------------
+-- Utilitaires
+-------------------------------------------------
 
 --- Retourne le nombre d'unités placées
 function BoardManager.GetPlacedCount(): number
@@ -186,6 +312,19 @@ function BoardManager.GetPlacedCount(): number
 	return count
 end
 
-print("[BoardManager] ✅ BoardManager initialisé (mode liste)")
+--- Supprime toutes les unités placées et vide la grille d'occupancy
+function BoardManager.ClearAll(): ()
+	for id, _ in BoardManager.PlacedUnits do
+		local unit: PlacedUnit? = BoardManager.PlacedUnits[id]
+		if unit and unit.Model then
+			unit.Model:Destroy()
+		end
+	end
+	table.clear(BoardManager.PlacedUnits)
+	table.clear(BoardManager.GridOccupancy)
+	print("[BoardManager] 🧹 Board nettoyé — toutes les unités et la grille vidées")
+end
+
+print("[BoardManager] ✅ BoardManager initialisé (grille tactique)")
 
 return BoardManager

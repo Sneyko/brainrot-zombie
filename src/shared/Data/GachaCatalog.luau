@@ -30,12 +30,12 @@ GachaCatalog.PityLegendary       = 100   -- Pull garanti Legendary tous les 100 
 GachaCatalog.PityMythic          = 500   -- Pull garanti Mythic tous les 500 pulls
 GachaCatalog.StartingTokens      = 3     -- Tokens offerts au premier lancement
 
--- Tokens gagnés par niveau complété
+-- Tokens gagnés par niveau complété (augmentés car les niveaux sont plus durs)
 GachaCatalog.TokenRewards = {
-	[1] = 1, [2] = 1, [3] = 1,          -- Niveaux faciles : 1 token
-	[4] = 2, [5] = 2, [6] = 2,          -- Niveaux moyens : 2 tokens
-	[7] = 3, [8] = 3, [9] = 3,          -- Niveaux durs : 3 tokens
-	[10] = 5,                             -- Niveau final : 5 tokens
+	[1] = 1, [2] = 1, [3] = 2,          -- Niveaux faciles : 1-2 tokens
+	[4] = 2, [5] = 3, [6] = 3,          -- Niveaux moyens : 2-3 tokens
+	[7] = 4, [8] = 4, [9] = 5,          -- Niveaux durs : 4-5 tokens
+	[10] = 8,                             -- Niveau final : 8 tokens
 }
 
 -------------------------------------------------
