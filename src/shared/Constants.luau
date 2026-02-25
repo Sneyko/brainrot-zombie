@@ -135,10 +135,28 @@ Constants.PORTALS = {
 	},
 }
 
--- Fontaine centrale
+-- Fontaine / Statue centrale ("Glorbo Doré")
 Constants.FOUNTAIN_RADIUS     = 14
 Constants.FOUNTAIN_HEIGHT     = 5
 Constants.FOUNTAIN_JET_HEIGHT = 25
+Constants.STATUE_HEIGHT       = 18   -- Hauteur totale de la statue dorée de Glorbo
+Constants.STATUE_PEDESTAL_H   = 6    -- Hauteur du piédestal
+
+-- Zone AFK ("Salle du Temps")
+Constants.AFK_ZONE_ANGLE      = 45            -- Entre portail GameMap et Shop
+Constants.AFK_ZONE_DISTANCE   = 65            -- Distance du centre (studs)
+Constants.AFK_ZONE_RADIUS     = 18            -- Rayon de la zone
+Constants.AFK_REWARD_INTERVAL = 60            -- Secondes entre chaque récompense AFK
+Constants.AFK_REWARD_AMOUNT   = 5             -- BrainCoins gagnés par intervalle
+Constants.AFK_SEATS           = 8             -- Nombre de sièges
+
+-- Vitrine / Hall of Fame
+Constants.SHOWCASE_ANGLE      = 315           -- Entre portail Gacha et GameMap
+Constants.SHOWCASE_DISTANCE   = 70            -- Distance du centre (studs)
+Constants.SHOWCASE_LENGTH     = 30            -- Longueur de la vitrine
+Constants.SHOWCASE_UNITS      = { "Tralalero", "SigmaSkibidi", "TitanCameraMan" }  -- Unités exposées
+Constants.LEADERBOARD_ANGLE   = 225           -- Entre portail Sell et Gacha
+Constants.LEADERBOARD_DISTANCE = 55           -- Distance du centre
 
 -------------------------------------------------
 -- Grille tactique (Placement Top-Down)
