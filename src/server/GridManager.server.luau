@@ -275,6 +275,8 @@ buildGround()
 buildWall()
 buildPlates()
 buildSpawnLocation()
-setupLighting()
+-- setupLighting() DÉSACTIVÉ : le SpawnBuilder gère le lighting du lobby.
+-- Quand le joueur entre en jeu, le GameLoop/FSM devrait appliquer le lighting de gameplay.
+-- setupLighting()
 
 print("[MapBuilder] 🏗️ Carte construite — Sol + Mur + 4 plaques d'achat")
