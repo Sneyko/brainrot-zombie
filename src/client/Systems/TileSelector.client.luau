@@ -27,6 +27,7 @@ local Workspace = game:GetService("Workspace")
 local sharedFolder: Instance = ReplicatedStorage:WaitForChild("Shared")
 local Constants = require(sharedFolder:WaitForChild("Constants"))
 local CameraUtils = require(script.Parent:WaitForChild("CameraUtils"))
+local GameStore = require(script.Parent.Parent:WaitForChild("State"):WaitForChild("GameStore"))
 
 -- Player
 local player: Player = Players.LocalPlayer
@@ -452,6 +453,7 @@ end)
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean): ()
 	if gameProcessed then return end
 	if input.KeyCode == Enum.KeyCode.E then
+		if not GameStore.InLevel then return end -- bloquer hors niveau
 		toggleEditMode()
 		return
 	end
@@ -484,6 +486,10 @@ end)
 local editButton: TextButton = createEditButton()
 editButton.Activated:Connect(toggleEditMode)
 
+-- Cacher le bouton par défaut (visible uniquement en niveau)
+local editButtonGui: ScreenGui = editButton.Parent :: ScreenGui
+editButtonGui.Enabled = GameStore.InLevel
+
 -- Mettre à jour le texte du bouton quand l'état change
 local function updateButtonVisual(): ()
 	if editMode then
@@ -494,6 +500,15 @@ local function updateButtonVisual(): ()
 		editButton.BackgroundColor3 = Color3.fromRGB(30, 30, 55)
 	end
 end
+
+-- Écouter le changement d'état InLevel pour afficher/cacher le bouton tactique
+GameStore.InLevelChanged:Connect(function(inLevel: boolean): ()
+	editButtonGui.Enabled = inLevel
+	-- Si on quitte le niveau et qu'on est en mode édition, on en sort
+	if not inLevel and editMode then
+		exitEditMode()
+	end
+end)
 
 -- Polling léger pour sync le bouton (pas de RenderStepped, juste Heartbeat throttled)
 local buttonSyncAccum: number = 0
